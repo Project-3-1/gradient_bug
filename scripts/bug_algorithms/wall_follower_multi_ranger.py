@@ -28,7 +28,9 @@ class WallFollower:
     max_rate = 0.5
     state_start_time = 0
     state = "FORWARD"
-    previous_heading = 0.0;
+    previous_heading = 0.0
+    sizeOfRoom = 3
+    distanceToGoAwayFromWall = sizeOfRoom/2
     angle = 2000
     calculate_angle_first_time = True
     around_corner_first_turn = True
@@ -54,6 +56,24 @@ class WallFollower:
         w = 0
         twist = Twist()
         twist.linear.x = v
+        twist.angular.z = w
+        return twist
+
+    def twistRight(self):
+        v = self.max_speed
+        w = 0
+        twist = Twist()
+        # TODO verify the direction, don't know if - should be for right or left
+        twist.linear.y = v
+        twist.angular.z = w
+        return twist
+
+    def twistLeft(self):
+        v = self.max_speed
+        w = 0
+        twist = Twist()
+        # TODO verify the direction, don't know if - should be for right or left
+        twist.linear.y = -v
         twist.angular.z = w
         return twist
 
@@ -129,7 +149,7 @@ class WallFollower:
                 self.state = self.transition("FORWARD")
 
         elif self.state == "FORWARD":
-            # if close enough to the front wall, turn to find it and be in front of it. 
+            # if close enough to the front wall, turn to find it and be in front of it.
             if front_range < self.ref_distance_from_wall:
                 self.state = self.transition("TURN_TO_FIND_WALL")
 
@@ -145,37 +165,52 @@ class WallFollower:
                 # time to rotate in order to be parallel to the wall
                 self.state = self.transition("TURN_TO_ALLIGN_TO_WALL")
                 print("got angle ", self.angle)
-            # if there is no corner closer than 2m and we're next to a wall, it means we should rotate around the wall 
+            # if there is no corner closer than 2m and we're next to a wall, it means we should rotate around the wall
             # careful to the 2.0 value, we might want to change this value depending on the size of th walls (room)
             if (side_range < 1.0 and front_range > 2.0):
                 self.around_corner_first_turn = True
                 self.around_corner_go_back = False
                 self.previous_heading = current_heading
                 self.state = self.transition("ROTATE_AROUND_WALL")
-                
+
         elif self.state =="TURN_TO_ALLIGN_TO_WALL":
             print(current_heading)
             print(wraptopi(current_heading-self.previous_heading), self.angle)
             if self.logicIsCloseTo(wraptopi(current_heading-self.previous_heading), self.angle, 0.1):
                 self.state = self.transition("FORWARD_ALONG_WALL")
 
-        elif self.state =="FORWARD_ALONG_WALL":
-            # if the drone is too far from the wall, it means that there was an opening or a corner 
-            # so it should turn there to explore it. 
+        elif self.state == "FORWARD_ALONG_WALL":
+            # if the drone is too far from the wall, it means that there was an opening or a corner
+            # so it should turn there to explore it.
             if side_range > 2:
                 self.around_corner_first_turn = True
                 self.state = self.transition("ROTATE_AROUND_WALL")
-            # if it gets close to a wall in front of it, it means that it reached a corner and it has to rotate to 
-            # follow the next wall 
+            # if it gets close to a wall in front of it, it means that it reached a corner and it has to rotate to
+            # follow the next wall
             if front_range < self.ref_distance_from_wall:
                 self.state = self.transition("ROTATE_IN_CORNER")
                 self.previous_heading = current_heading
-                
+            # if 3 sec have been elapsed, then it will explore the center area for a it and then come back to the wall.
+            if self.state_start_time > 3:
+                self.state = self.transition("GET_AWAY_FROM_WALL")
+
+        # fly perpendicular to the wall to explore a bit the center of the room while not too far from the wall
+        elif self.state == "GET_AWAY_FROM_WALL":
+            if side_range >= self.distanceToGoAwayFromWall:
+                # goes back to the wall to continue the wall following
+                self.state = self.transition("GO_BACK_TO_WALL")
+
+        # goes back to the wall to continue the wall following
+        elif self.state == "GO_BACK_TO_WALL":
+            if side_range <= self.ref_distance_from_wall + 0.2:
+                # if close enough to the wall again, then forward along wall again
+                self.state = self.transition("FORWARD_ALONG_WALL")
+
         elif self.state =="ROTATE_AROUND_WALL":
             if front_range < self.ref_distance_from_wall+0.3:
                 # If it's close from a wall (front), then it's time to rotate and place itself in front of the wall.
                 self.state = self.transition("TURN_TO_FIND_WALL")
-                
+
         elif self.state == "ROTATE_IN_CORNER":
             print(current_heading-self.previous_heading)
             if self.logicIsCloseTo(math.fabs(wraptopi(current_heading-self.previous_heading)), 0.8, 0.1):
@@ -186,21 +221,35 @@ class WallFollower:
         ##### handle state ations ########
         if self.state == "TAKE_OFF":
             twist = self.take_off()
+
         elif self.state == "FORWARD":
             twist = self.twistForward()
+
         elif self.state == "HOVER":
+
             twist = self.hover()
         elif self.state == "TURN_TO_FIND_WALL":
             twist = self.hover()
             if (time.time() - self.state_start_time) > 1:
                 twist = self.twistTurn(self.max_rate)
+
         elif self.state == "TURN_TO_ALLIGN_TO_WALL":
-            # hover for 2 sec, perform the calculus and then turn 
+            # hover for 2 sec, perform the calculus and then turn
             twist = self.hover()
             if (time.time() - self.state_start_time) > 2:
                 twist = self.twistTurn(self.max_rate)
+
         elif self.state == "FORWARD_ALONG_WALL":
             twist = self.twistForwardAlongWall(side_range)
+
+        # TODO test
+        elif self.state == "GO_BACK_TO_WALL":
+            twist = self.twistLeft()
+
+        # TODO test
+        elif self.state == "FORWARD_ALONG_WALL":
+            twist = self.twistRight()
+
         elif self.state == "ROTATE_AROUND_WALL":
             if self.around_corner_first_turn:
                 print("regular_turn_first")
@@ -240,6 +289,7 @@ class WallFollower:
 # Main method
 if __name__ == '__main__':
     try:
-        WallFollower.wall_follower()
+        # TODO fix this error (next line)
+        wall_follower()
     except rospy.ROSInterruptException:
         pass
