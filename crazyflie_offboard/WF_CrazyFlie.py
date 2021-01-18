@@ -27,7 +27,7 @@ from cflib.crazyflie.syncLogger import SyncLogger
 from cflib.crazyflie.log import LogConfig
 
 
-URI = 'radio://0/80/250K'
+URI = 'radio://0/80/2M'
 
 def wraptopi(number):
     return  ( number + np.pi) % (2 * np.pi ) - np.pi
