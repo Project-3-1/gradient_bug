@@ -43,7 +43,7 @@ class WF_crazyflie:
     state = "TAKE_OFF"
     current_heading = 0.0
 
-    URI = 'radio://0/80/250K'
+    URI = 'radio://0/80/2M'
 
     if len(sys.argv) > 1:
         URI = sys.argv[1]
